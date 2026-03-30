@@ -3,6 +3,7 @@ package security
 import (
 	"encoding/base64"
 	"net/http"
+	"time"
 
 	g8 "github.com/TwiN/g8/v2"
 	"github.com/TwiN/logr"
@@ -74,10 +75,16 @@ func (c *Config) ApplySecurityMiddleware(router fiber.Router) error {
 				return err
 			}
 		}
+		// Store whether bcrypt is configured to avoid checking it on every request
+		hasBcrypt := len(c.Basic.PasswordBcryptHashBase64Encoded) > 0
+		// Store username for comparison (avoid shadowing the basicauth parameter)
+		configuredUsername := c.Basic.Username
+		// Store bcrypt hash for comparison
+		configuredHash := decodedBcryptHash
 		router.Use(basicauth.New(basicauth.Config{
 			Authorizer: func(username, password string) bool {
-				if len(c.Basic.PasswordBcryptHashBase64Encoded) > 0 {
-					if username != c.Basic.Username || bcrypt.CompareHashAndPassword(decodedBcryptHash, []byte(password)) != nil {
+				if hasBcrypt {
+					if username != configuredUsername || bcrypt.CompareHashAndPassword(configuredHash, []byte(password)) != nil {
 						return false
 					}
 				}
@@ -88,6 +95,23 @@ func (c *Config) ApplySecurityMiddleware(router fiber.Router) error {
 				return ctx.Status(401).SendString("Unauthorized")
 			},
 		}))
+		// Set session cookie after successful Basic auth
+		router.Use(func(c *fiber.Ctx) error {
+			if c.Locals("authorized") == true {
+				// Generate a secure session ID
+				sessionID := GenerateSessionID()
+				SetWithTTL(sessionID, configuredUsername, 24*time.Hour)
+				c.Cookie(&fiber.Cookie{
+					Name:     cookieNameSession,
+					Value:    sessionID,
+					Path:     "/",
+					MaxAge:   86400, // 24 hours in seconds
+					HTTPOnly: true,
+					SameSite: "Lax",
+				})
+			}
+			return c.Next()
+		})
 	}
 	return nil
 }
@@ -105,6 +129,14 @@ func (c *Config) IsAuthenticated(ctx *fiber.Ctx) bool {
 		token := c.gate.ExtractTokenFromRequest(request)
 		_, hasSession := sessions.Get(token)
 		return hasSession
+	}
+	// Check for Basic auth session cookie
+	if c.Basic != nil {
+		sessionCookie := ctx.Cookies(cookieNameSession)
+		if sessionCookie != "" {
+			_, exists := sessions.Get(sessionCookie)
+			return exists
+		}
 	}
 	return false
 }

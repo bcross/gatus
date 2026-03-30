@@ -1,6 +1,8 @@
 package security
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"strings"
 	"time"
 
@@ -47,4 +49,16 @@ func HasGroup(sessionID, group string) bool {
 		}
 	}
 	return false
+}
+
+// GenerateSessionID generates a random session ID using crypto/rand
+func GenerateSessionID() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback (should never happen)
+		for i := range b {
+			b[i] = byte(i)
+		}
+	}
+	return base64.URLEncoding.EncodeToString(b)
 }
