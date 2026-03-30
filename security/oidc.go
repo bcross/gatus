@@ -19,13 +19,15 @@ const (
 
 // OIDCConfig is the configuration for OIDC authentication
 type OIDCConfig struct {
-	IssuerURL       string        `yaml:"issuer-url"`   // e.g. https://dev-12345678.okta.com
-	RedirectURL     string        `yaml:"redirect-url"` // e.g. http://localhost:8080/authorization-code/callback
+	IssuerURL       string        `yaml:"issuer-url"`             // e.g. https://dev-12345678.okta.com
+	RedirectURL     string        `yaml:"redirect-url"`          // e.g. http://localhost:8080/authorization-code/callback
 	ClientID        string        `yaml:"client-id"`
 	ClientSecret    string        `yaml:"client-secret"`
-	Scopes          []string      `yaml:"scopes"`           // e.g. ["openid"]
-	AllowedSubjects []string      `yaml:"allowed-subjects"` // e.g. ["user1@example.com"]. If empty, all subjects are allowed
-	SessionTTL      time.Duration `yaml:"session-ttl"`      // e.g. 8h. Defaults to 8 hours
+	Scopes          []string      `yaml:"scopes"`                 // e.g. ["openid"]
+	AllowedSubjects []string      `yaml:"allowed-subjects"`       // e.g. ["user1@example.com"]. If empty, all subjects are allowed
+	GroupsClaim     string        `yaml:"groups-claim"`           // The claim name in the ID token that contains group memberships. e.g. "groups"
+	AllowedGroups   []string      `yaml:"allowed-groups"`         // e.g. ["admin", "developers"]. If empty, all groups are allowed
+	SessionTTL      time.Duration `yaml:"session-ttl"`            // e.g. 8h. Defaults to 8 hours
 
 	oauth2Config oauth2.Config
 	verifier     *oidc.IDTokenVerifier
@@ -119,27 +121,110 @@ func (c *OIDCConfig) callbackHandler(w http.ResponseWriter, r *http.Request) { /
 		http.Error(w, "nonce did not match", http.StatusBadRequest)
 		return
 	}
-	if len(c.AllowedSubjects) == 0 {
-		// If there's no allowed subjects, all subjects are allowed.
-		c.setSessionCookie(w, idToken)
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	for _, subject := range c.AllowedSubjects {
-		if strings.ToLower(subject) == strings.ToLower(idToken.Subject) {
-			c.setSessionCookie(w, idToken)
-			http.Redirect(w, r, "/", http.StatusFound)
+	// Check subject authorization
+	if len(c.AllowedSubjects) > 0 {
+		subjectAuthorized := false
+		for _, subject := range c.AllowedSubjects {
+			if strings.ToLower(subject) == strings.ToLower(idToken.Subject) {
+				subjectAuthorized = true
+				break
+			}
+		}
+		if !subjectAuthorized {
+			logr.Debugf("[security.callbackHandler] Subject %s is not in the list of allowed subjects", idToken.Subject)
+			http.Redirect(w, r, "/?error=access_denied", http.StatusFound)
 			return
 		}
 	}
-	logr.Debugf("[security.callbackHandler] Subject %s is not in the list of allowed subjects", idToken.Subject)
-	http.Redirect(w, r, "/?error=access_denied", http.StatusFound)
+	// Check group authorization (only if AllowedGroups is configured)
+	if len(c.AllowedGroups) > 0 {
+		// Extract claims from the ID token to get groups
+		var claims map[string]interface{}
+		if err := idToken.Claims(&claims); err != nil {
+			logr.Errorf("[security.callbackHandler] Failed to extract claims from ID token: %v", err)
+			http.Redirect(w, r, "/?error=access_denied", http.StatusFound)
+			return
+		}
+		// Get the groups from the configured claim name
+		groupsClaim := c.GroupsClaim
+		if groupsClaim == "" {
+			groupsClaim = "groups" // Default claim name
+		}
+		groupsValue, exists := claims[groupsClaim]
+		if !exists {
+			logr.Debugf("[security.callbackHandler] Groups claim '%s' not found in ID token", groupsClaim)
+			http.Redirect(w, r, "/?error=access_denied", http.StatusFound)
+			return
+		}
+		// Groups can be a string or an array of strings
+		var userGroups []string
+		switch v := groupsValue.(type) {
+		case []interface{}:
+			for _, g := range v {
+				if gs, ok := g.(string); ok {
+					userGroups = append(userGroups, strings.ToLower(gs))
+				}
+			}
+		case []string:
+			for _, g := range v {
+				userGroups = append(userGroups, strings.ToLower(g))
+			}
+		case string:
+			userGroups = []string{strings.ToLower(v)}
+		}
+		// Check if user belongs to any of the allowed groups
+		groupAuthorized := false
+		for _, allowedGroup := range c.AllowedGroups {
+			for _, userGroup := range userGroups {
+				if strings.ToLower(allowedGroup) == userGroup {
+					groupAuthorized = true
+					break
+				}
+			}
+			if groupAuthorized {
+				break
+			}
+		}
+		if !groupAuthorized {
+			logr.Debugf("[security.callbackHandler] User groups %v are not in the list of allowed groups %v", userGroups, c.AllowedGroups)
+			http.Redirect(w, r, "/?error=access_denied", http.StatusFound)
+			return
+		}
+	}
+	// All checks passed, create session
+	c.setSessionCookie(w, idToken)
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (c *OIDCConfig) setSessionCookie(w http.ResponseWriter, idToken *oidc.IDToken) {
 	// At this point, the user has been confirmed. All that's left to do is create a session.
 	sessionID := uuid.NewString()
-	sessions.SetWithTTL(sessionID, idToken.Subject, c.SessionTTL)
+	// Extract groups from claims if AllowedGroups is configured
+	var groups []string
+	if len(c.AllowedGroups) > 0 {
+		var claims map[string]interface{}
+		if err := idToken.Claims(&claims); err == nil {
+			groupsClaim := c.GroupsClaim
+			if groupsClaim == "" {
+				groupsClaim = "groups"
+			}
+			if groupsValue, exists := claims[groupsClaim]; exists {
+				switch v := groupsValue.(type) {
+				case []interface{}:
+					for _, g := range v {
+						if gs, ok := g.(string); ok {
+							groups = append(groups, gs)
+						}
+					}
+				case []string:
+					groups = v
+				case string:
+					groups = []string{v}
+				}
+			}
+		}
+	}
+	sessions.SetWithTTL(sessionID, idToken.Subject, c.SessionTTL, groups...)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieNameSession,
 		Value:    sessionID,

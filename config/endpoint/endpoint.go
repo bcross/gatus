@@ -57,6 +57,16 @@ const (
 	TypeUNKNOWN  Type = "UNKNOWN"
 )
 
+// Visibility is the visibility of an endpoint or suite
+type Visibility string
+
+const (
+	// VisibilityPublic means the endpoint or suite is accessible without authentication
+	VisibilityPublic Visibility = "public"
+	// VisibilityPrivate means the endpoint or suite requires authentication
+	VisibilityPrivate Visibility = "private"
+)
+
 var (
 	// ErrEndpointWithNoCondition is the error with which Gatus will panic if an endpoint is configured with no conditions
 	ErrEndpointWithNoCondition = errors.New("you must specify at least one condition per endpoint")
@@ -130,6 +140,12 @@ type Endpoint struct {
 	// UIConfig is the configuration for the UI
 	UIConfig *ui.Config `yaml:"ui,omitempty"`
 
+	// Visibility is whether the endpoint is public or private.
+	// Public endpoints are accessible without authentication.
+	// Private endpoints require authentication.
+	// If no visibility is set and security is configured, the endpoint defaults to private.
+	Visibility Visibility `yaml:"visibility,omitempty"`
+
 	// NumberOfFailuresInARow is the number of unsuccessful evaluations in a row
 	NumberOfFailuresInARow int `yaml:"-"`
 
@@ -158,6 +174,13 @@ func (e *Endpoint) IsEnabled() bool {
 		return true
 	}
 	return *e.Enabled
+}
+
+// IsPublic returns whether the endpoint is public (accessible without authentication).
+// Returns true if visibility is explicitly set to "public".
+// Returns false if visibility is set to "private" or if not set (defaults to private when security is configured).
+func (e *Endpoint) IsPublic() bool {
+	return e.Visibility == VisibilityPublic
 }
 
 // Type returns the endpoint type

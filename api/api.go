@@ -119,18 +119,41 @@ func (a *API) createRouter(cfg *config.Config) *fiber.App {
 	// PROTECTED ROUTES //
 	//////////////////////
 	// ORDER IS IMPORTANT: all routes applied AFTER the security middleware will require authn
+	// Note: When security is configured with public endpoints/suites, we use a different approach
+	// to allow unauthenticated access to public resources while protecting private ones.
+
 	protectedAPIRouter := apiRouter.Group("/")
 	if cfg.Security != nil {
 		if err := cfg.Security.RegisterHandlers(app); err != nil {
 			panic(err)
 		}
-		if err := cfg.Security.ApplySecurityMiddleware(protectedAPIRouter); err != nil {
-			panic(err)
+		// Check if there are any public endpoints or suites
+		hasPublicEndpointsOrSuites := HasPublicEndpointsOrSuites(cfg)
+		if hasPublicEndpointsOrSuites {
+			// When there are public endpoints/suites, we need a more nuanced approach:
+			// - Public endpoints/suites should be accessible without auth
+			// - Private endpoints/suites should require auth
+			// Use visibility-aware handlers
+			protectedAPIRouter.Get("/v1/endpoints/statuses", VisibilityAwareEndpointStatuses(cfg))
+			protectedAPIRouter.Get("/v1/endpoints/:key/statuses", VisibilityAwareEndpointStatus(cfg))
+			protectedAPIRouter.Get("/v1/suites/statuses", VisibilityAwareSuiteStatuses(cfg))
+			protectedAPIRouter.Get("/v1/suites/:key/statuses", VisibilityAwareSuiteStatus(cfg))
+		} else {
+			// No public endpoints, use standard security middleware
+			if err := cfg.Security.ApplySecurityMiddleware(protectedAPIRouter); err != nil {
+				panic(err)
+			}
+			protectedAPIRouter.Get("/v1/endpoints/statuses", EndpointStatuses(cfg))
+			protectedAPIRouter.Get("/v1/endpoints/:key/statuses", EndpointStatus(cfg))
+			protectedAPIRouter.Get("/v1/suites/statuses", SuiteStatuses(cfg))
+			protectedAPIRouter.Get("/v1/suites/:key/statuses", SuiteStatus(cfg))
 		}
+	} else {
+		// No security configured, all endpoints/suites are accessible
+		protectedAPIRouter.Get("/v1/endpoints/statuses", EndpointStatuses(cfg))
+		protectedAPIRouter.Get("/v1/endpoints/:key/statuses", EndpointStatus(cfg))
+		protectedAPIRouter.Get("/v1/suites/statuses", SuiteStatuses(cfg))
+		protectedAPIRouter.Get("/v1/suites/:key/statuses", SuiteStatus(cfg))
 	}
-	protectedAPIRouter.Get("/v1/endpoints/statuses", EndpointStatuses(cfg))
-	protectedAPIRouter.Get("/v1/endpoints/:key/statuses", EndpointStatus(cfg))
-	protectedAPIRouter.Get("/v1/suites/statuses", SuiteStatuses(cfg))
-	protectedAPIRouter.Get("/v1/suites/:key/statuses", SuiteStatus(cfg))
 	return app
 }

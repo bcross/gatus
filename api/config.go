@@ -22,11 +22,21 @@ func (handler ConfigHandler) GetConfig(c *fiber.Ctx) error {
 		isAuthenticated = handler.securityConfig.IsAuthenticated(c)
 	}
 
-	// Prepare response with announcements
+	// Prepare response with announcements and security info
 	response := map[string]interface{}{
 		"oidc":          hasOIDC,
 		"authenticated": isAuthenticated,
 	}
+
+	// Add hasPublicEndpointsOrSuites if security is configured
+	if handler.securityConfig != nil && hasPublicEndpointsOrSuites(handler.config) {
+		response["hasPublicEndpointsOrSuites"] = true
+		// Add OIDC login URL if OIDC is configured
+		if handler.securityConfig.OIDC != nil {
+			response["oidcLoginUrl"] = "/oidc/login"
+		}
+	}
+
 	// Add announcements if available, otherwise use empty slice
 	if handler.config != nil && handler.config.Announcements != nil && len(handler.config.Announcements) > 0 {
 		response["announcements"] = handler.config.Announcements
@@ -41,4 +51,24 @@ func (handler ConfigHandler) GetConfig(c *fiber.Ctx) error {
 		return c.Status(500).SendString(fmt.Sprintf(`{"error":"Failed to marshal response: %s"}`, err.Error()))
 	}
 	return c.Status(200).Send(responseBytes)
+}
+
+// hasPublicEndpointsOrSuites returns true if there are any public endpoints or suites configured.
+func hasPublicEndpointsOrSuites(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	// Check endpoints
+	for _, ep := range cfg.Endpoints {
+		if ep.IsPublic() {
+			return true
+		}
+	}
+	// Check suites
+	for _, s := range cfg.Suites {
+		if s.IsPublic() {
+			return true
+		}
+	}
+	return false
 }

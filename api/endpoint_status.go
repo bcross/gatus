@@ -113,3 +113,69 @@ func EndpointStatus(cfg *config.Config) fiber.Handler {
 		return c.Status(200).Send(output)
 	}
 }
+
+// VisibilityAwareEndpointStatuses handles requests to retrieve all EndpointStatus
+// with visibility filtering based on authentication status.
+func VisibilityAwareEndpointStatuses(cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		page, pageSize := extractPageAndPageSizeFromRequest(c, cfg.Storage.MaximumNumberOfResults)
+		isAuthenticated := IsAuthenticated(c, cfg)
+
+		// If not authenticated, only public endpoints are returned
+		if !isAuthenticated {
+			return handleUnauthenticatedEndpointStatuses(c, cfg, page, pageSize)
+		}
+
+		// Authenticated users get all endpoints (filtered by group-based auth if OIDC with groups)
+		return EndpointStatuses(cfg)(c)
+	}
+}
+
+// handleUnauthenticatedEndpointStatuses returns only public endpoints for unauthenticated users
+func handleUnauthenticatedEndpointStatuses(c *fiber.Ctx, cfg *config.Config, page, pageSize int) error {
+	// Get all endpoint statuses from storage
+	allStatuses, err := store.Get().GetAllEndpointStatuses(paging.NewEndpointStatusParams().WithResults(page, pageSize))
+	if err != nil {
+		logr.Errorf("[api.handleUnauthenticatedEndpointStatuses] Failed to retrieve endpoint statuses: %s", err.Error())
+		return c.Status(500).SendString(err.Error())
+	}
+
+	// Filter to only public endpoints
+	var filteredStatuses []*endpoint.Status
+	for _, status := range allStatuses {
+		if IsEndpointPublic(cfg, NormalizeKey(status.Key)) {
+			filteredStatuses = append(filteredStatuses, status)
+		}
+	}
+
+	data, err := json.Marshal(filteredStatuses)
+	if err != nil {
+		logr.Errorf("[api.handleUnauthenticatedEndpointStatuses] Unable to marshal object to JSON: %s", err.Error())
+		return c.Status(500).SendString("unable to marshal object to JSON")
+	}
+	c.Set("Content-Type", "application/json")
+	return c.Status(200).Send(data)
+}
+
+// VisibilityAwareEndpointStatus retrieves a single endpoint.Status by key
+// with visibility checking.
+func VisibilityAwareEndpointStatus(cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		key, err := url.QueryUnescape(c.Params("key"))
+		if err != nil {
+			logr.Errorf("[api.VisibilityAwareEndpointStatus] Failed to decode key: %s", err.Error())
+			return c.Status(400).SendString("invalid key encoding")
+		}
+
+		isAuthenticated := IsAuthenticated(c, cfg)
+		isPublic := IsEndpointPublic(cfg, NormalizeKey(key))
+
+		// If endpoint is private and user is not authenticated, return 401
+		if !isPublic && !isAuthenticated {
+			return c.Status(401).SendString("Unauthorized")
+		}
+
+		// Let the standard handler process the request
+		return EndpointStatus(cfg)(c)
+	}
+}

@@ -54,6 +54,12 @@ type Suite struct {
 
 	// Endpoints in the suite (executed sequentially)
 	Endpoints []*endpoint.Endpoint `yaml:"endpoints"`
+
+	// Visibility is whether the suite is public or private.
+	// Public suites are accessible without authentication.
+	// Private suites require authentication.
+	// If no visibility is set and security is configured, the suite defaults to private.
+	Visibility endpoint.Visibility `yaml:"visibility,omitempty"`
 }
 
 // IsEnabled returns whether the suite is enabled
@@ -62,6 +68,13 @@ func (s *Suite) IsEnabled() bool {
 		return true
 	}
 	return *s.Enabled
+}
+
+// IsPublic returns whether the suite is public (accessible without authentication).
+// Returns true if visibility is explicitly set to "public".
+// Returns false if visibility is set to "private" or if not set (defaults to private when security is configured).
+func (s *Suite) IsPublic() bool {
+	return s.Visibility == endpoint.VisibilityPublic
 }
 
 // Key returns a unique key for the suite
