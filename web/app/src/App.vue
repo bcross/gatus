@@ -6,7 +6,8 @@
     </div>
 
     <!-- Main App Container -->
-    <div v-else-if="!config || !config.oidc || config.authenticated" class="relative">
+    <!-- Show full app if: no security config, OR authenticated, OR has public endpoints/suites (which shows login btn in header) -->
+    <div v-else-if="!config || !config.oidc || config.authenticated || config.hasPublicEndpointsOrSuites" class="relative">
       <!-- Header -->
       <header class="border-b bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div class="container mx-auto px-4 py-4 max-w-7xl">
@@ -44,12 +45,24 @@
 
             <!-- Right Side Actions -->
             <div class="flex items-center gap-2">
+              <!-- Login/Logout Button (shown when security is configured with public endpoints) -->
+              <Button
+                v-if="showLoginLogout"
+                variant="outline"
+                size="sm"
+                @click="handleLoginLogout"
+              >
+                <LogIn v-if="!config.authenticated" class="h-4 w-4 mr-1" />
+                <LogOut v-else class="h-4 w-4 mr-1" />
+                {{ config.authenticated ? 'Logout' : 'Login' }}
+              </Button>
+
               <!-- Navigation Links (Desktop) -->
               <nav v-if="buttons && buttons.length" class="hidden md:flex items-center gap-1">
-                <a 
-                  v-for="button in buttons" 
-                  :key="button.name" 
-                  :href="button.link" 
+                <a
+                  v-for="button in buttons"
+                  :key="button.name"
+                  :href="button.link"
                   target="_blank"
                   class="px-3 py-2 text-sm font-medium rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
@@ -58,10 +71,10 @@
               </nav>
 
               <!-- Mobile Menu Button -->
-              <Button 
-                v-if="buttons && buttons.length" 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                v-if="buttons && buttons.length"
+                variant="ghost"
+                size="icon"
                 class="md:hidden"
                 @click="mobileMenuOpen = !mobileMenuOpen"
               >
@@ -155,7 +168,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Menu, X, LogIn } from 'lucide-vue-next'
+import { Menu, X, LogIn, LogOut } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import Social from './components/Social.vue'
@@ -190,6 +203,25 @@ const link = computed(() => {
 const buttons = computed(() => {
   return window.config && window.config.buttons ? window.config.buttons : []
 })
+
+// Show login/logout button when security is configured with public endpoints/suites
+const showLoginLogout = computed(() => {
+  return config.value && config.value.hasPublicEndpointsOrSuites
+})
+
+// Handle login/logout button click
+const handleLoginLogout = () => {
+  if (config.value.authenticated) {
+    // Logout - clear the session cookie and reload
+    document.cookie = 'gatus_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+    window.location.reload()
+  } else {
+    // Login - redirect to OIDC login or show basic auth
+    if (config.value.oidc && config.value.oidcLoginUrl) {
+      window.location.href = config.value.oidcLoginUrl
+    }
+  }
+}
 
 // Methods
 const fetchConfig = async () => {
