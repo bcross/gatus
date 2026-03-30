@@ -329,6 +329,38 @@ func TestEndpoint_IsEnabled(t *testing.T) {
 	}
 }
 
+func TestEndpoint_IsPublic(t *testing.T) {
+	tests := []struct {
+		name       string
+		visibility Visibility
+		want       bool
+	}{
+		{
+			name:       "public-visibility",
+			visibility: VisibilityPublic,
+			want:       true,
+		},
+		{
+			name:       "private-visibility",
+			visibility: VisibilityPrivate,
+			want:       false,
+		},
+		{
+			name:       "empty-visibility",
+			visibility: "",
+			want:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Endpoint{Visibility: tt.visibility}
+			if got := e.IsPublic(); got != tt.want {
+				t.Errorf("Endpoint.IsPublic() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestEndpoint_Type(t *testing.T) {
 	type args struct {
 		URL string
