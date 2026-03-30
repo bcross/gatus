@@ -1,0 +1,34 @@
+metrics: true
+
+security:
+  basic:
+    username: admin
+    password-bcrypt-base64: "JDJhJDA4JDFoRnpPY1hnaFl1OC9ISlFsa21VS09wOGlPU1ZOTDlHZG1qeTFvb3dIckRBUnlHUmNIRWlT"
+
+endpoints:
+  # Public endpoint - accessible without login
+  - name: "Google (Public)"
+    group: "Search"
+    visibility: public
+    url: "https://www.google.com"
+    conditions:
+      - "[STATUS] == 200"
+    interval: 1m
+
+  # Private endpoint - requires login
+  - name: "GitHub (Private)"
+    group: "Development"
+    visibility: private
+    url: "https://www.github.com"
+    conditions:
+      - "[STATUS] == 200"
+    interval: 1m
+
+  # Another public endpoint
+  - name: "Cloudflare (Public)"
+    group: "Infrastructure"
+    visibility: public
+    url: "https://www.cloudflare.com"
+    conditions:
+      - "[STATUS] == 200"
+    interval: 1m
