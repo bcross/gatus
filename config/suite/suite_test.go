@@ -129,6 +129,38 @@ func TestSuite_IsEnabled(t *testing.T) {
 	}
 }
 
+func TestSuite_IsPublic(t *testing.T) {
+	tests := []struct {
+		name       string
+		visibility endpoint.Visibility
+		want       bool
+	}{
+		{
+			name:       "public-visibility",
+			visibility: endpoint.VisibilityPublic,
+			want:       true,
+		},
+		{
+			name:       "private-visibility",
+			visibility: endpoint.VisibilityPrivate,
+			want:       false,
+		},
+		{
+			name:       "empty-visibility",
+			visibility: "",
+			want:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Suite{Visibility: tt.visibility}
+			if got := s.IsPublic(); got != tt.want {
+				t.Errorf("Suite.IsPublic() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSuite_Key(t *testing.T) {
 	tests := []struct {
 		name  string
