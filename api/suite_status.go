@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/TwiN/gatus/v5/config"

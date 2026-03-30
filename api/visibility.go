@@ -184,8 +184,8 @@ func ExtractSessionID(c *fiber.Ctx, cfg *config.Config) string {
 	if cfg == nil || cfg.Security == nil {
 		return ""
 	}
-	sessionCookie, err := c.Cookie(cookieNameSession)
-	if err != nil {
+	sessionCookie := c.Cookies(cookieNameSession)
+	if sessionCookie == "" {
 		return ""
 	}
 	return sessionCookie

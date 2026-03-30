@@ -2,6 +2,7 @@ package security
 
 import (
 	"strings"
+	"time"
 
 	"github.com/TwiN/gocache/v2"
 )
@@ -15,12 +16,12 @@ type SessionData struct {
 }
 
 // SetWithTTL stores a session with subject and optional groups
-func SetWithTTL(sessionID, subject string, ttlSeconds int64, groups ...string) {
+func SetWithTTL(sessionID, subject string, ttl time.Duration, groups ...string) {
 	data := SessionData{
 		Subject: subject,
 		Groups:  groups,
 	}
-	sessions.SetWithTTL(sessionID, data, ttlSeconds)
+	sessions.SetWithTTL(sessionID, data, ttl)
 }
 
 // Get retrieves the session data for a given session ID

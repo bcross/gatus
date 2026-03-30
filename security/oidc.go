@@ -224,7 +224,7 @@ func (c *OIDCConfig) setSessionCookie(w http.ResponseWriter, idToken *oidc.IDTok
 			}
 		}
 	}
-	sessions.SetWithTTL(sessionID, idToken.Subject, c.SessionTTL, groups...)
+	SetWithTTL(sessionID, idToken.Subject, c.SessionTTL, groups...)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieNameSession,
 		Value:    sessionID,
