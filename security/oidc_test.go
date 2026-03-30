@@ -88,3 +88,34 @@ func TestOIDCConfig_setSessionCookieWithCustomTTL(t *testing.T) {
 		t.Errorf("expected cookie MaxAge to be %d, but was %d", int(customTTL.Seconds()), sessionCookie.MaxAge)
 	}
 }
+
+func TestOIDCConfig_ValidateAndSetDefaults_GroupsClaim(t *testing.T) {
+	c := &OIDCConfig{
+		IssuerURL:       "https://sso.gatus.io/",
+		RedirectURL:     "http://localhost:80/authorization-code/callback",
+		ClientID:        "client-id",
+		ClientSecret:    "client-secret",
+		Scopes:          []string{"openid"},
+		GroupsClaim:     "groups",
+		AllowedGroups:   []string{"admin", "developers"},
+	}
+	if !c.ValidateAndSetDefaults() {
+		t.Error("OIDCConfig with GroupsClaim and AllowedGroups should be valid")
+	}
+}
+
+func TestOIDCConfig_ValidateAndSetDefaults_EmptyAllowedGroups(t *testing.T) {
+	// Empty AllowedGroups should still be valid - means all authenticated users are allowed
+	c := &OIDCConfig{
+		IssuerURL:       "https://sso.gatus.io/",
+		RedirectURL:     "http://localhost:80/authorization-code/callback",
+		ClientID:        "client-id",
+		ClientSecret:    "client-secret",
+		Scopes:          []string{"openid"},
+		GroupsClaim:     "groups",
+		AllowedGroups:   []string{},
+	}
+	if !c.ValidateAndSetDefaults() {
+		t.Error("OIDCConfig with empty AllowedGroups should be valid")
+	}
+}
